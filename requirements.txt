@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+requests
+APScheduler
+sqlalchemy
+google-genai==0.2.*  # placeholder; install appropriate genai sdk per docs
+python-multipart
+pydantic
+Jinja2
