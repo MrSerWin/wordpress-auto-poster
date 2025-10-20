@@ -22,7 +22,7 @@ class GeminiClient:
         # Try multiple environment variable names for API key
         self.api_key = (os.getenv('GOOGLE_API_KEY') or 
                        os.getenv('GEMINI_API_KEY') or 
-                       "YOUR_API_KEY")
+                       "AIzaSyBSA01PL-cRMqsHVTHcLOYixj2o-29GKNo")
 
         if not HAS_GENAI:
             print("[gemini_client] Warning: google.genai SDK not installed. Using local stubs.")

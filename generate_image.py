@@ -9,7 +9,7 @@ from google import genai
 from google.genai import types
 
 
-GEMINI_API_KEY = "YOUR_API_KEY"
+GEMINI_API_KEY = "AIzaSyBSA01PL-cRMqsHVTHcLOYixj2o-29GKNo"
 # GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 # To run this code you need to install the following dependencies:
 # pip install google-genai
