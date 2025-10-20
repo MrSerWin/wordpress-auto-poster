@@ -1,202 +1,202 @@
-# Автоматический публикатор статей
+# Automatic Article Publisher
 
-Система автоматической генерации и публикации статей на WordPress каждые 3 дня.
+Automated system for generating and publishing articles to WordPress every 3 days.
 
-## 🚀 Быстрый старт
+## 🚀 Quick Start
 
-### 1. Загрузка плана статей
+### 1. Load Article Plan
 ```bash
-# Загрузить статьи из plan.txt в базу данных
+# Load articles from plan.txt into database
 python load_plan.py
 
-# Показать статус плана
+# Show plan status
 python load_plan.py --status
 ```
 
-### 2. Запуск автоматического публикатора
+### 2. Start Automatic Publisher
 ```bash
-# Запустить в фоновом режиме
+# Start in background mode
 ./start_auto_publisher.sh
 
-# Проверить статус
+# Check status
 ./monitor_auto_publisher.sh
 
-# Остановить
+# Stop
 ./stop_auto_publisher.sh
 ```
 
-## 📋 Управление
+## 📋 Management
 
-### Команды для работы с планом
+### Plan Management Commands
 ```bash
-# Загрузить план статей
+# Load article plan
 python load_plan.py
 
-# Показать статус плана
+# Show plan status
 python load_plan.py --status
 ```
 
-### Команды для публикатора
+### Publisher Commands
 ```bash
-# Показать статус системы
+# Show system status
 python auto_publisher.py --status
 
-# Опубликовать статью сейчас
+# Publish article now
 python auto_publisher.py --publish-now
 
-# Запустить в режиме демона (вручную)
+# Run in daemon mode (manually)
 python auto_publisher.py
 ```
 
-### Скрипты управления
+### Management Scripts
 ```bash
-# Запуск в фоновом режиме
+# Start in background mode
 ./start_auto_publisher.sh
 
-# Мониторинг
+# Monitor
 ./monitor_auto_publisher.sh
 
-# Остановка
+# Stop
 ./stop_auto_publisher.sh
 ```
 
-## 📊 Мониторинг
+## 📊 Monitoring
 
-### Просмотр логов
+### View Logs
 ```bash
-# Просмотр логов в реальном времени
+# View logs in real-time
 tail -f logs/auto_publisher.out
 
-# Последние 50 строк
+# Last 50 lines
 tail -50 logs/auto_publisher.out
 ```
 
-### Проверка статуса
+### Check Status
 ```bash
-# Полный статус
+# Full status
 ./monitor_auto_publisher.sh
 
-# Только статус базы данных
+# Database status only
 python auto_publisher.py --status
 ```
 
-## 🗄️ База данных
+## 🗄️ Database
 
-Система использует SQLite базу данных `storage.db` с таблицами:
+The system uses SQLite database `storage.db` with the following tables:
 
-### Таблица `plans`
-- `id` - уникальный идентификатор
-- `seed` - заголовок статьи
-- `seo_focus` - SEO фокус
-- `created_at` - дата создания
-- `last_published_at` - дата публикации
-- `status` - статус ('pending' или 'published')
+### `plans` Table
+- `id` - unique identifier
+- `seed` - article title
+- `seo_focus` - SEO focus
+- `created_at` - creation date
+- `last_published_at` - publication date
+- `status` - status ('pending' or 'published')
 
-### Таблица `posts`
-- `id` - уникальный идентификатор
-- `title` - заголовок поста
-- `slug` - URL слаг
-- `wp_id` - ID в WordPress
-- `published_at` - дата публикации
-- `seo_keywords` - ключевые слова
+### `posts` Table
+- `id` - unique identifier
+- `title` - post title
+- `slug` - URL slug
+- `wp_id` - WordPress ID
+- `published_at` - publication date
+- `seo_keywords` - keywords
 
-## ⚙️ Настройки
+## ⚙️ Settings
 
-### Интервал публикации
-По умолчанию статьи публикуются каждые 3 дня. Для изменения отредактируйте переменную `PUBLISH_INTERVAL_DAYS` в файле `auto_publisher.py`.
+### Publication Interval
+By default, articles are published every 3 days. To change this, edit the `PUBLISH_INTERVAL_DAYS` variable in `auto_publisher.py`.
 
-### Логика работы планировщика
-- **При первом запуске**: Если в базе данных нет опубликованных статей, система сразу опубликует первую статью
-- **При повторном запуске**: Система проверяет время последней публикации из базы данных и публикует следующую статью только если прошло 3 дня
-- **Проверка каждые 5 минут**: Система проверяет, не пора ли публиковать статью
-- **Статус каждые 6 часов**: В логах отображается текущий статус системы
+### Scheduler Logic
+- **On first run**: If there are no published articles in the database, the system will immediately publish the first article
+- **On subsequent runs**: The system checks the time of the last publication from the database and publishes the next article only if 3 days have passed
+- **Check every 5 minutes**: The system checks if it's time to publish an article
+- **Status every 6 hours**: Current system status is displayed in logs
 
-### Логирование
-Логи сохраняются в файл `auto_publisher.log` и выводятся в консоль.
+### Logging
+Logs are saved to `auto_publisher.log` file and displayed in console.
 
-## 🔧 Устранение неполадок
+## 🔧 Troubleshooting
 
-### Публикатор не запускается
+### Publisher Won't Start
 ```bash
-# Проверить, не запущен ли уже
+# Check if already running
 ps aux | grep auto_publisher
 
-# Остановить все процессы
+# Stop all processes
 pkill -f auto_publisher.py
 
-# Запустить заново
+# Restart
 ./start_auto_publisher.sh
 ```
 
-### Ошибки в логах
+### Errors in Logs
 ```bash
-# Просмотр ошибок
+# View errors
 grep -i error logs/auto_publisher.out
 
-# Просмотр последних ошибок
+# View recent errors
 tail -100 logs/auto_publisher.out | grep -i error
 ```
 
-### Проблемы с базой данных
+### Database Issues
 ```bash
-# Проверить базу данных
+# Check database
 sqlite3 storage.db ".tables"
 sqlite3 storage.db "SELECT COUNT(*) FROM plans WHERE status='pending';"
 ```
 
-## 📁 Структура файлов
+## 📁 File Structure
 
 ```
 wordpress-auto-poster/
-├── auto_publisher.py          # Основной скрипт публикатора
-├── load_plan.py              # Загрузка плана статей
-├── start_auto_publisher.sh   # Скрипт запуска
-├── stop_auto_publisher.sh    # Скрипт остановки
-├── monitor_auto_publisher.sh # Скрипт мониторинга
-├── plan.txt                  # План статей
-├── storage.db                # База данных SQLite
-├── logs/                     # Директория логов
-│   ├── auto_publisher.out    # Логи публикатора
-│   └── auto_publisher.pid    # PID файл
-└── generated_images/         # Сгенерированные изображения
+├── auto_publisher.py          # Main publisher script
+├── load_plan.py              # Article plan loader
+├── start_auto_publisher.sh   # Start script
+├── stop_auto_publisher.sh    # Stop script
+├── monitor_auto_publisher.sh # Monitor script
+├── plan.txt                  # Article plan
+├── storage.db                # SQLite database
+├── logs/                     # Logs directory
+│   ├── auto_publisher.out    # Publisher logs
+│   └── auto_publisher.pid    # PID file
+└── generated_images/         # Generated images
 ```
 
-## 🎯 Примеры использования
+## 🎯 Usage Examples
 
-### Добавление новых статей в план
-1. Отредактируйте файл `plan.txt`
-2. Запустите `python load_plan.py`
-3. Новые статьи будут добавлены в очередь
+### Adding New Articles to Plan
+1. Edit the `plan.txt` file
+2. Run `python load_plan.py`
+3. New articles will be added to the queue
 
-### Публикация статьи вручную
+### Manual Article Publication
 ```bash
 python auto_publisher.py --publish-now
 ```
 
-### Проверка работы системы
+### System Health Check
 ```bash
-# Полный мониторинг
+# Full monitoring
 ./monitor_auto_publisher.sh
 
-# Только статус
+# Status only
 python auto_publisher.py --status
 ```
 
-## 🔄 Автоматический запуск при загрузке системы
+## 🔄 Auto-start on System Boot
 
-Для автоматического запуска при загрузке системы добавьте в crontab:
+To automatically start on system boot, add to crontab:
 
 ```bash
-# Редактировать crontab
+# Edit crontab
 crontab -e
 
-# Добавить строку для запуска при загрузке
+# Add line for boot startup
 @reboot cd /path/to/wordpress-auto-poster && ./start_auto_publisher.sh
 ```
 
-## 📞 Поддержка
+## 📞 Support
 
-При возникновении проблем:
-1. Проверьте логи: `tail -f logs/auto_publisher.out`
-2. Проверьте статус: `./monitor_auto_publisher.sh`
-3. Перезапустите систему: `./stop_auto_publisher.sh && ./start_auto_publisher.sh`
+If you encounter issues:
+1. Check logs: `tail -f logs/auto_publisher.out`
+2. Check status: `./monitor_auto_publisher.sh`
+3. Restart system: `./stop_auto_publisher.sh && ./start_auto_publisher.sh`

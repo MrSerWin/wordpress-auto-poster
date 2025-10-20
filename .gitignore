@@ -39,3 +39,5 @@ check_*.py
 ENTER_FILE_NAME_0.png
 
 Gen_Img_0.png
+
+*.out
