@@ -10,7 +10,7 @@ load_dotenv()
 
 # Try to import Google GenAI SDK
 try:
-    from google import genai
+    import google.genai as genai
     from google.genai.types import GenerateContentConfig, GoogleSearch
     HAS_GENAI = True
 except Exception as e:
@@ -19,7 +19,10 @@ except Exception as e:
 
 class GeminiClient:
     def __init__(self):
-        self.api_key = os.getenv('GOOGLE_API_KEY')
+        # Try multiple environment variable names for API key
+        self.api_key = (os.getenv('GOOGLE_API_KEY') or 
+                       os.getenv('GEMINI_API_KEY') or 
+                       "YOUR_API_KEY")
 
         if not HAS_GENAI:
             print("[gemini_client] Warning: google.genai SDK not installed. Using local stubs.")
@@ -27,7 +30,7 @@ class GeminiClient:
             return
 
         if not self.api_key:
-            print("[gemini_client] Warning: GOOGLE_API_KEY not set. Using local stubs.")
+            print("[gemini_client] Warning: No API key found. Using local stubs.")
             self.client = None
             return
 
@@ -73,7 +76,7 @@ Return your response as a valid JSON object with this exact structure:
     "image_prompt": "Detailed prompt for AI image generation (describe a relevant, professional image)",
     "headings_summary": ["List of main H2 headings used"]
 }}
-
+The article should be comprehensive, interesting, with examples of available resources or solutions, and compel the reader to return to the site. Article in English
 Write the article now:"""
 
             # Generate content using Gemini
@@ -162,37 +165,71 @@ Write the article now:"""
             "headings_summary": []
         }
 
-    def generate_image(self, image_prompt: str, size="1024x1024"):
-        """Generate/fetch image using Unsplash API as fallback"""
+    def generate_image(self, image_prompt: str, size="1600x900"):
+        """Generate image using Gemini API with 16:9 aspect ratio"""
 
-        # Try Unsplash first (free, no additional API key needed)
+        if not self.client:
+            print("[gemini_client] No client available, using fallback image generation")
+            return self._generate_fallback_image(image_prompt)
+
         try:
-            import requests
+            from google.genai.types import Content, Part, GenerateContentConfig
+            
+            # Create content for image generation
+            contents = [
+                Content(
+                    role="user",
+                    parts=[
+                        Part.from_text(text=f"Generate a professional, high-quality image for a blog article. {image_prompt}. The image should be visually appealing, modern, and relevant to the content. High resolution, sharp focus, professional style.")
+                    ],
+                ),
+            ]
+            
+            # Configure image generation
+            generate_content_config = GenerateContentConfig(
+                response_modalities=["TEXT", "IMAGE"],
+            )
 
-            # Extract keywords from prompt
-            keywords = self._extract_keywords_from_prompt(image_prompt)
-            query = "+".join(keywords[:3])  # Use top 3 keywords
+            print(f"[gemini_client] Generating image with Gemini API for prompt: {image_prompt[:100]}...")
 
-            # Unsplash API (free tier, no auth needed for basic usage)
-            url = f"https://source.unsplash.com/1600x900/?{query},technology,professional"
+            # Generate content using streaming
+            for chunk in self.client.models.generate_content_stream(
+                model="gemini-2.0-flash-preview-image-generation",
+                contents=contents,
+                config=generate_content_config,
+            ):
+                if (
+                    chunk.candidates is None
+                    or chunk.candidates[0].content is None
+                    or chunk.candidates[0].content.parts is None
+                ):
+                    continue
+                    
+                if (chunk.candidates[0].content.parts[0].inline_data and 
+                    chunk.candidates[0].content.parts[0].inline_data.data):
+                    
+                    inline_data = chunk.candidates[0].content.parts[0].inline_data
+                    data_buffer = inline_data.data
+                    mime_type = inline_data.mime_type
+                    
+                    print(f"[gemini_client] Image generated successfully via Gemini API")
+                    return data_buffer, mime_type
 
-            print(f"[gemini_client] Fetching image from Unsplash with query: {query}")
-
-            response = requests.get(url, timeout=10)
-            if response.status_code == 200:
-                print(f"[gemini_client] Image fetched successfully from Unsplash")
-                return response.content, 'image/jpeg'
+            # If no image was generated in the stream
+            print("[gemini_client] No image generated in stream, using fallback")
+            return self._generate_fallback_image(image_prompt)
 
         except Exception as e:
-            print(f"[gemini_client] Error fetching from Unsplash: {e}")
+            print(f"[gemini_client] Error generating image with Gemini API: {e}")
+            return self._generate_fallback_image(image_prompt)
 
-        # Fallback: Create a simple colored placeholder
+    def _generate_fallback_image(self, image_prompt: str):
+        """Generate a fallback image when Gemini API is not available"""
         try:
             from PIL import Image, ImageDraw, ImageFont
             import io
-            import textwrap
 
-            # Create a nice gradient background
+            # Create a nice gradient background with 16:9 aspect ratio
             img = Image.new('RGB', (1600, 900), color=(45, 55, 72))
             draw = ImageDraw.Draw(img)
 
@@ -202,9 +239,9 @@ Write the article now:"""
                 draw.line([(0, i), (1600, i)], fill=color)
 
             # Add text
-            text = "AI & Technology"
+            text = image_prompt
             try:
-                font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 80)
+                font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 60)
             except:
                 font = ImageFont.load_default()
 
@@ -222,11 +259,11 @@ Write the article now:"""
             img.save(img_bytes, format='PNG')
             img_bytes.seek(0)
 
-            print(f"[gemini_client] Generated styled placeholder image")
+            print(f"[gemini_client] Generated fallback image with 16:9 aspect ratio")
             return img_bytes.read(), 'image/png'
 
         except Exception as e:
-            print(f"[gemini_client] Error creating styled placeholder: {e}")
+            print(f"[gemini_client] Error creating fallback image: {e}")
             return self._get_placeholder_image()
 
     def _extract_keywords_from_prompt(self, prompt: str):
@@ -253,18 +290,30 @@ def generate_article_with_image(topic: str):
     # 1️⃣ Генерируем текст статьи
     article = client.generate_article(brief_plan=topic, seo_focus=topic)
 
-    # 2️⃣ Генерируем изображение
-    image_bytes, mime_type = client.generate_image(article.get("image_prompt", topic))
+    # 2️⃣ Генерируем изображение через Gemini API
+    image_prompt = article.get("image_prompt", f"Professional illustration for article about {topic}")
+    image_bytes, mime_type = client.generate_image(image_prompt)
     
-    # Сохраняем изображение локально (для теста)
+    # Сохраняем изображение локально
     import os
     import hashlib
     os.makedirs("generated_images", exist_ok=True)
+    
+    # Определяем расширение файла на основе MIME типа
+    if mime_type == 'image/jpeg':
+        extension = '.jpg'
+    elif mime_type == 'image/png':
+        extension = '.png'
+    else:
+        extension = '.png'  # по умолчанию PNG
+    
     # уникальное имя файла
-    fname = hashlib.md5(topic.encode()).hexdigest() + ".png"
+    fname = hashlib.md5(topic.encode()).hexdigest() + extension
     path = os.path.join("generated_images", fname)
     with open(path, "wb") as f:
         f.write(image_bytes)
+
+    print(f"[generate_article_with_image] Image saved to: {path}")
 
     # 3️⃣ Возвращаем словарь с нужными полями
     return {
@@ -273,5 +322,6 @@ def generate_article_with_image(topic: str):
         "image_url": path,  # локальный путь к изображению
         "keywords": article.get("keywords", []),
         "slug": article.get("slug", ""),
-        "meta_description": article.get("meta_description", "")
+        "meta_description": article.get("meta_description", ""),
+        "image_prompt": image_prompt
     }
