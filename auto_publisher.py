@@ -229,10 +229,12 @@ def run_scheduler():
                 time_since_last = current_time - status['last_publish_time']
                 if time_since_last >= timedelta(days=PUBLISH_INTERVAL_DAYS):
                     should_publish = True
-                    logger.info(f"⏰ Прошло {time_since_last.days} дней с последней публикации - время публиковать")
+                    logger.info(f"⏰ Прошло {time_since_last.days} дней {time_since_last.seconds//3600} часов с последней публикации - время публиковать")
                 else:
-                    days_remaining = (status['next_publish'] - current_time).days
-                    logger.info(f"⏳ До следующей публикации: {days_remaining} дней")
+                    time_until_next = status['next_publish'] - current_time
+                    days_remaining = time_until_next.days
+                    hours_remaining = time_until_next.seconds // 3600
+                    logger.info(f"⏳ До следующей публикации: {days_remaining} дней {hours_remaining} часов")
             
             if should_publish:
                 success = publish_next_article()
