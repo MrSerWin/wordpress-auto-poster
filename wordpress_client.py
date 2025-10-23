@@ -53,6 +53,43 @@ def get_or_create_tag(tag_name: str):
         print(f"[WordPress] Error with tag '{tag_name}': {e}")
         return None
 
+def get_or_create_category(category_name: str):
+    """Get existing category or create new one, returns category ID"""
+    if not WP_BASE:
+        raise RuntimeError('WP_BASE_URL is not set in environment')
+
+    # Clean Application Password
+    app_password_clean = WP_PASS.replace(' ', '') if WP_PASS else ''
+    auth_clean = HTTPBasicAuth(WP_USER, app_password_clean)
+
+    # Search for existing category
+    search_url = urljoin(WP_BASE, '/wp-json/wp/v2/categories')
+    params = {'search': category_name}
+
+    try:
+        resp = requests.get(search_url, auth=auth_clean, params=params)
+        resp.raise_for_status()
+        categories = resp.json()
+
+        # Check if exact match exists
+        for category in categories:
+            if category.get('name', '').lower() == category_name.lower():
+                print(f"[WordPress] Found existing category: {category_name} (ID: {category.get('id')})")
+                return category.get('id')
+
+        # Category not found, create new one
+        create_data = {'name': category_name}
+        resp = requests.post(search_url, auth=auth_clean, json=create_data)
+        resp.raise_for_status()
+        new_category = resp.json()
+
+        print(f"[WordPress] Created new category: {category_name} (ID: {new_category.get('id')})")
+        return new_category.get('id')
+
+    except Exception as e:
+        print(f"[WordPress] Error with category '{category_name}': {e}")
+        return None
+
 def upload_image_to_wp(image_bytes: bytes, filename: str, mime_type='image/png'):
     """Uploads an image and returns the JSON response from WP (contains id and source_url)."""
     if not WP_BASE:

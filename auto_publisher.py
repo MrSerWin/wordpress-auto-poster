@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from gemini_client import generate_article_with_image
-from wordpress_client import upload_image_to_wp, create_wp_post, get_or_create_tag
+from wordpress_client import upload_image_to_wp, create_wp_post, get_or_create_tag, get_or_create_category
 
 load_dotenv()
 
@@ -61,7 +61,7 @@ def get_next_plan():
     """Получить следующую статью для публикации"""
     conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
-    cur.execute("SELECT id, seed, seo_focus, created_at, last_published_at FROM plans WHERE status='pending' ORDER BY created_at LIMIT 1")
+    cur.execute("SELECT id, seed, seo_focus, created_at, last_published_at, category FROM plans WHERE status='pending' ORDER BY created_at LIMIT 1")
     row = cur.fetchone()
     conn.close()
     return row
@@ -92,8 +92,8 @@ def publish_next_article():
             logger.info("Нет статей, ожидающих публикации")
             return False
         
-        plan_id, seed, seo_focus, created_at, last_pub = plan
-        logger.info(f"Публикуем статью: {seed[:50]}...")
+        plan_id, seed, seo_focus, created_at, last_pub, category = plan
+        logger.info(f"Публикуем статью: {seed[:50]}... (категория: {category})")
         
         # Генерируем статью и изображение
         article = generate_article_with_image(topic=seed)
@@ -130,6 +130,17 @@ def publish_next_article():
                 except Exception as e:
                     logger.warning(f"Ошибка создания тега {keyword}: {e}")
         
+        # Получаем ID категории
+        category_ids = []
+        if category:
+            try:
+                category_id = get_or_create_category(category)
+                if category_id:
+                    category_ids.append(category_id)
+                    logger.info(f"Категория установлена: {category} (ID: {category_id})")
+            except Exception as e:
+                logger.warning(f"Ошибка создания категории {category}: {e}")
+        
         # Публикуем статью
         wp_post = create_wp_post(
             title=title,
@@ -138,7 +149,8 @@ def publish_next_article():
             status='publish',
             featured_media_id=featured_media_id,
             meta_description=meta,
-            tags=tag_ids if tag_ids else None
+            tags=tag_ids if tag_ids else None,
+            categories=category_ids if category_ids else None
         )
         
         wp_id = wp_post.get('id')
