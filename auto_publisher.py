@@ -168,8 +168,8 @@ def get_status():
     cur.execute("SELECT COUNT(*) FROM posts")
     total_posts = cur.fetchone()[0]
     
-    # Получаем время последней публикации
-    cur.execute("SELECT last_published_at FROM plans WHERE status='published' ORDER BY last_published_at DESC LIMIT 1")
+    # Получаем время последней публикации из таблицы posts
+    cur.execute("SELECT published_at FROM posts ORDER BY published_at DESC LIMIT 1")
     last_publish_row = cur.fetchone()
     
     conn.close()

@@ -43,3 +43,5 @@ Gen_Img_0.png
 *.out
 
 logs/auto_publisher.pid
+
+plans/
