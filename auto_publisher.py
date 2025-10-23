@@ -9,7 +9,7 @@ import sys
 import time
 import logging
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 
 # Добавляем текущую директорию в путь для импорта
@@ -71,7 +71,7 @@ def mark_plan_published(plan_id):
     conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
     cur.execute('UPDATE plans SET last_published_at=?, status=? WHERE id=?', 
-                (datetime.now().isoformat(), 'published', plan_id))
+                (datetime.now(timezone.utc).isoformat(), 'published', plan_id))
     conn.commit()
     conn.close()
 
@@ -80,7 +80,7 @@ def save_post_record(title, slug, wp_id, keywords):
     conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
     cur.execute('INSERT INTO posts (title, slug, wp_id, published_at, seo_keywords) VALUES (?, ?, ?, ?, ?)',
-                (title, slug, wp_id, datetime.now().isoformat(), str(keywords)))
+                (title, slug, wp_id, datetime.now(timezone.utc).isoformat(), str(keywords)))
     conn.commit()
     conn.close()
 
@@ -175,11 +175,14 @@ def get_status():
     conn.close()
     
     last_publish_time = None
-    next_publish = datetime.now() + timedelta(days=PUBLISH_INTERVAL_DAYS)
+    next_publish = datetime.now(timezone.utc) + timedelta(days=PUBLISH_INTERVAL_DAYS)
     
     if last_publish_row and last_publish_row[0]:
         try:
             last_publish_time = datetime.fromisoformat(last_publish_row[0])
+            # Если дата без timezone, добавляем UTC
+            if last_publish_time.tzinfo is None:
+                last_publish_time = last_publish_time.replace(tzinfo=timezone.utc)
             next_publish = last_publish_time + timedelta(days=PUBLISH_INTERVAL_DAYS)
         except ValueError:
             pass
@@ -212,7 +215,7 @@ def run_scheduler():
     
     while True:
         try:
-            current_time = datetime.now()
+            current_time = datetime.now(timezone.utc)
             
             # Получаем актуальный статус
             status = get_status()
