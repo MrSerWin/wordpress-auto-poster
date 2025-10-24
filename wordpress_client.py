@@ -12,9 +12,13 @@ load_dotenv()
 WP_BASE = os.getenv('WP_BASE_URL', '').rstrip('/')
 WP_USER = os.getenv('WP_USERNAME')
 WP_PASS = os.getenv('WP_APP_PASSWORD')
+DISABLE_PUBLISH = os.getenv('DISABLE_WP_PUBLISH', 'false').lower() == 'true'
 
 if not WP_BASE or not WP_USER or not WP_PASS:
     print('[wordpress_client] Warning: WP credentials not configured. Configure .env before using.')
+
+if DISABLE_PUBLISH:
+    print('[wordpress_client] ⚠️  WordPress publishing is DISABLED for testing')
 
 def get_or_create_tag(tag_name: str):
     """Get existing tag or create new one, returns tag ID"""
@@ -108,6 +112,16 @@ def upload_image_to_wp(image_bytes: bytes, filename: str, mime_type='image/png')
     return resp.json()
 
 def create_wp_post(title, content_html, slug=None, status='publish', featured_media_id=None, meta_description=None, tags=None, categories=None):
+    if DISABLE_PUBLISH:
+        print(f"[WordPress] 🚫 PUBLISHING DISABLED - Would publish: {title}")
+        # Возвращаем фиктивный ответ для тестирования
+        return {
+            'id': 99999,
+            'link': f'https://example.com/test-post-{slug or "test"}',
+            'title': title,
+            'status': 'draft'  # В тестовом режиме всегда draft
+        }
+    
     if not WP_BASE:
         raise RuntimeError('WP_BASE_URL is not set in environment')
 

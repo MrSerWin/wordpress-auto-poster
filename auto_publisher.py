@@ -86,13 +86,20 @@ def save_post_record(title, slug, wp_id, keywords):
 
 def publish_next_article():
     """Опубликовать следующую статью"""
+    logger.info("🔍 [DEBUG] publish_next_article() вызвана")
+    logger.info(f"🔍 [DEBUG] Текущее время: {datetime.now(timezone.utc).isoformat()}")
+    
     try:
+        logger.info("🔍 [DEBUG] Получаем следующий план...")
         plan = get_next_plan()
+        logger.info(f"🔍 [DEBUG] План получен: {plan is not None}")
+        
         if not plan:
             logger.info("Нет статей, ожидающих публикации")
             return False
         
         plan_id, seed, seo_focus, created_at, last_pub, category = plan
+        logger.info(f"🔍 [DEBUG] План ID: {plan_id}, Категория: {category}")
         logger.info(f"Публикуем статью: {seed[:50]}... (категория: {category})")
         
         # Генерируем статью и изображение
@@ -168,6 +175,8 @@ def publish_next_article():
 
 def get_status():
     """Получить статус системы"""
+    logger.info("🔍 [DEBUG] get_status() вызвана")
+    
     conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
     
@@ -186,6 +195,9 @@ def get_status():
     
     conn.close()
     
+    logger.info(f"🔍 [DEBUG] Статистика БД: pending={pending_count}, published={published_count}, posts={total_posts}")
+    logger.info(f"🔍 [DEBUG] Последняя публикация в posts: {last_publish_row}")
+    
     last_publish_time = None
     next_publish = datetime.now(timezone.utc) + timedelta(days=PUBLISH_INTERVAL_DAYS)
     
@@ -196,16 +208,22 @@ def get_status():
             if last_publish_time.tzinfo is None:
                 last_publish_time = last_publish_time.replace(tzinfo=timezone.utc)
             next_publish = last_publish_time + timedelta(days=PUBLISH_INTERVAL_DAYS)
-        except ValueError:
+            logger.info(f"🔍 [DEBUG] Последняя публикация: {last_publish_time}")
+            logger.info(f"🔍 [DEBUG] Следующая публикация: {next_publish}")
+        except ValueError as e:
+            logger.error(f"🔍 [DEBUG] Ошибка парсинга времени: {e}")
             pass
     
-    return {
+    result = {
         'pending_articles': pending_count,
         'published_articles': published_count,
         'total_posts': total_posts,
         'last_publish_time': last_publish_time,
         'next_publish': next_publish
     }
+    
+    logger.info(f"🔍 [DEBUG] get_status() возвращает: {result}")
+    return result
 
 def run_scheduler():
     """Запуск планировщика"""
@@ -235,6 +253,11 @@ def run_scheduler():
             # Проверяем, нужно ли публиковать статью
             should_publish = False
             
+            logger.info(f"🔍 [DEBUG] Проверка времени публикации:")
+            logger.info(f"🔍 [DEBUG] - Текущее время: {current_time}")
+            logger.info(f"🔍 [DEBUG] - Последняя публикация: {status['last_publish_time']}")
+            logger.info(f"🔍 [DEBUG] - Следующая публикация: {status['next_publish']}")
+            
             if status['last_publish_time'] is None:
                 # Первая публикация - публикуем сразу
                 should_publish = True
@@ -242,6 +265,9 @@ def run_scheduler():
             else:
                 # Проверяем интервал с последней публикации
                 time_since_last = current_time - status['last_publish_time']
+                logger.info(f"🔍 [DEBUG] - Время с последней публикации: {time_since_last}")
+                logger.info(f"🔍 [DEBUG] - Требуемый интервал: {timedelta(days=PUBLISH_INTERVAL_DAYS)}")
+                
                 if time_since_last >= timedelta(days=PUBLISH_INTERVAL_DAYS):
                     should_publish = True
                     logger.info(f"⏰ Прошло {time_since_last.days} дней {time_since_last.seconds//3600} часов с последней публикации - время публиковать")
@@ -251,8 +277,12 @@ def run_scheduler():
                     hours_remaining = time_until_next.seconds // 3600
                     logger.info(f"⏳ До следующей публикации: {days_remaining} дней {hours_remaining} часов")
             
+            logger.info(f"🔍 [DEBUG] Решение о публикации: {should_publish}")
+            
             if should_publish:
+                logger.info("🔍 [DEBUG] Запускаем публикацию статьи...")
                 success = publish_next_article()
+                logger.info(f"🔍 [DEBUG] Результат публикации: {success}")
                 if success:
                     # Обновляем статус после публикации
                     status = get_status()

@@ -22,7 +22,7 @@ load_dotenv()
 from gemini_client import GeminiClient
 from wordpress_client import upload_image_to_wp, create_wp_post, get_or_create_tag
 
-PUBLISH_INTERVAL_DAYS = int(os.getenv('PUBLISH_INTERVAL_DAYS', '3'))
+# PUBLISH_INTERVAL_DAYS = int(os.getenv('PUBLISH_INTERVAL_DAYS', '3'))
 DB_FILE = 'storage.db'
 
 def init_db():
@@ -118,9 +118,12 @@ def publish_next():
     mark_plan_published(plan_id)
     print('Published', title, '->', wp_id)
 
-scheduler = BackgroundScheduler()
-scheduler.add_job(publish_next, 'interval', days=PUBLISH_INTERVAL_DAYS, next_run_time=datetime.utcnow())
-scheduler.start()
+# scheduler = BackgroundScheduler()
+# scheduler.add_job(publish_next, 'interval', days=PUBLISH_INTERVAL_DAYS, next_run_time=datetime.utcnow())
+# scheduler.start()
+# 
+# ВНИМАНИЕ: Планировщик отключен для избежания конфликтов с auto_publisher.py
+# Используйте только auto_publisher.py для автоматической публикации
 
 @app.get('/status')
 def status():
