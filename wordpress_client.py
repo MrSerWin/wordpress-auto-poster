@@ -3,6 +3,7 @@
 Simple helpers to upload media and create posts via WordPress REST API using Application Passwords.
 """
 import os
+import re
 import requests
 from requests.auth import HTTPBasicAuth
 from urllib.parse import urljoin
@@ -19,6 +20,14 @@ if not WP_BASE or not WP_USER or not WP_PASS:
 
 if DISABLE_PUBLISH:
     print('[wordpress_client] ⚠️  WordPress publishing is DISABLED for testing')
+
+
+def _create_wp_slug(name: str) -> str:
+    """Create WordPress-compatible slug from name with special characters"""
+    slug = re.sub(r'[^\w\s-]', '', name.lower())  # Remove special chars like &, @, #
+    slug = re.sub(r'[-\s]+', '-', slug)  # Replace spaces/multiple hyphens with single hyphen
+    slug = slug.strip('-')  # Remove leading/trailing hyphens
+    return slug
 
 def get_or_create_tag(tag_name: str):
     """Get existing tag or create new one, returns tag ID"""
@@ -45,14 +54,33 @@ def get_or_create_tag(tag_name: str):
                 return tag.get('id')
 
         # Tag not found, create new one
-        create_data = {'name': tag_name}
+        # WordPress requires 'slug' for tags with special characters
+        slug = _create_wp_slug(tag_name)
+
+        create_data = {
+            'name': tag_name,
+            'slug': slug
+        }
+
+        print(f"[WordPress] Creating tag: {tag_name} with slug: {slug}")
         resp = requests.post(search_url, auth=auth_clean, json=create_data)
-        resp.raise_for_status()
+
+        # Better error handling
+        if resp.status_code != 201:
+            print(f"[WordPress] Error creating tag: {resp.status_code}")
+            print(f"[WordPress] Response: {resp.text}")
+            resp.raise_for_status()
+
         new_tag = resp.json()
 
         print(f"[WordPress] Created new tag: {tag_name} (ID: {new_tag.get('id')})")
         return new_tag.get('id')
 
+    except requests.exceptions.HTTPError as e:
+        print(f"[WordPress] HTTP Error with tag '{tag_name}': {e}")
+        print(f"[WordPress] Response status: {e.response.status_code}")
+        print(f"[WordPress] Response body: {e.response.text}")
+        return None
     except Exception as e:
         print(f"[WordPress] Error with tag '{tag_name}': {e}")
         return None
@@ -82,14 +110,33 @@ def get_or_create_category(category_name: str):
                 return category.get('id')
 
         # Category not found, create new one
-        create_data = {'name': category_name}
+        # WordPress requires 'slug' for categories with special characters
+        slug = _create_wp_slug(category_name)
+
+        create_data = {
+            'name': category_name,
+            'slug': slug
+        }
+
+        print(f"[WordPress] Creating category: {category_name} with slug: {slug}")
         resp = requests.post(search_url, auth=auth_clean, json=create_data)
-        resp.raise_for_status()
+
+        # Better error handling
+        if resp.status_code != 201:
+            print(f"[WordPress] Error creating category: {resp.status_code}")
+            print(f"[WordPress] Response: {resp.text}")
+            resp.raise_for_status()
+
         new_category = resp.json()
 
         print(f"[WordPress] Created new category: {category_name} (ID: {new_category.get('id')})")
         return new_category.get('id')
 
+    except requests.exceptions.HTTPError as e:
+        print(f"[WordPress] HTTP Error with category '{category_name}': {e}")
+        print(f"[WordPress] Response status: {e.response.status_code}")
+        print(f"[WordPress] Response body: {e.response.text}")
+        return None
     except Exception as e:
         print(f"[WordPress] Error with category '{category_name}': {e}")
         return None

@@ -88,29 +88,45 @@ def publish_next_article():
     """Опубликовать следующую статью"""
     logger.info("🔍 [DEBUG] publish_next_article() вызвана")
     logger.info(f"🔍 [DEBUG] Текущее время: {datetime.now(timezone.utc).isoformat()}")
-    
+
     try:
         logger.info("🔍 [DEBUG] Получаем следующий план...")
         plan = get_next_plan()
         logger.info(f"🔍 [DEBUG] План получен: {plan is not None}")
-        
+
         if not plan:
             logger.info("Нет статей, ожидающих публикации")
             return False
-        
+
         plan_id, seed, seo_focus, created_at, last_pub, category = plan
         logger.info(f"🔍 [DEBUG] План ID: {plan_id}, Категория: {category}")
         logger.info(f"Публикуем статью: {seed[:50]}... (категория: {category})")
-        
+
         # Генерируем статью и изображение
+        logger.info("🔍 [DEBUG] Генерируем статью...")
         article = generate_article_with_image(topic=seed)
-        
-        title = article.get('title') or seed
+
+        # CRITICAL: Validate article was generated successfully
+        if not article:
+            logger.error(f"❌ FAILED: Article generation failed for topic: {seed}")
+            logger.error("❌ Article will NOT be published. Skipping to prevent bad content.")
+            logger.info("💡 TIP: Will retry this article on next run")
+            return False
+
+        # Extract and validate all required fields
+        title = article.get('title')
         slug = article.get('slug')
         meta = article.get('meta_description')
         keywords = article.get('keywords') or []
         content_html = article.get('content')
         image_prompt = article.get('image_prompt', f'Illustration for: {seed}')
+
+        # Double-check critical fields
+        if not title or not slug or not content_html:
+            logger.error(f"❌ FAILED: Missing critical fields in article")
+            logger.error(f"   Title: {bool(title)}, Slug: {bool(slug)}, Content: {bool(content_html)}")
+            logger.error("❌ Article will NOT be published. Skipping to prevent incomplete content.")
+            return False
         
         # Загружаем изображение на WordPress
         featured_media_id = None

@@ -22,7 +22,7 @@ class GeminiClient:
         # Try multiple environment variable names for API key
         self.api_key = (os.getenv('GOOGLE_API_KEY') or 
                        os.getenv('GEMINI_API_KEY') or 
-                       "AIzaSyBSA01PL-cRMqsHVTHcLOYixj2o-29GKNo")
+                       "KEY")
 
         if not HAS_GENAI:
             print("[gemini_client] Warning: google.genai SDK not installed. Using local stubs.")
@@ -65,19 +65,34 @@ REQUIREMENTS:
 6. Include a strong introduction and conclusion
 7. Format in HTML with proper tags (h2, h3, p, ul, ol, strong, em)
 
-IMPORTANT OUTPUT FORMAT:
-Return your response as a valid JSON object with this exact structure:
+CRITICAL OUTPUT FORMAT RULES:
+- You MUST return ONLY a valid JSON object
+- Do NOT include any text before or after the JSON
+- Do NOT wrap the JSON in markdown code blocks
+- The JSON must be properly formatted and parseable
+- All field values must be strings or arrays of strings (no nested objects)
+
+Return your response as a valid JSON object with this EXACT structure:
 {{
-    "title": "Compelling article title (60-70 characters, SEO-optimized)",
+    "title": "Compelling article title (60-70 characters max, SEO-optimized, NO special chars like {{}}, [], quotes)",
     "slug": "url-friendly-slug-for-wordpress",
-    "meta_description": "Engaging meta description (150-160 characters)",
+    "meta_description": "Engaging meta description (150-160 characters, describes article value)",
     "keywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"],
-    "content_html": "Full HTML article content with proper tags",
-    "image_prompt": "Detailed prompt for AI image generation (describe a relevant, professional image)",
+    "content_html": "Full HTML article content with proper tags (minimum 500 words)",
+    "image_prompt": "Detailed prompt for AI image generation (one sentence describing a relevant, professional image)",
     "headings_summary": ["List of main H2 headings used"]
 }}
-The article should be comprehensive, interesting, with examples of available resources or solutions, and compel the reader to return to the site. Article in English
-Write the article now:"""
+
+IMPORTANT FIELD REQUIREMENTS:
+- "title": Must be 10-70 characters, plain text, NO JSON syntax characters
+- "slug": Must be lowercase, hyphens only, 5-100 characters
+- "keywords": Array of 3-10 simple keywords (each 1-3 words max, NO sentences)
+- "content_html": Must be valid HTML, minimum 500 characters, NO raw JSON
+- "meta_description": Must be 50-160 characters
+
+The article should be comprehensive, interesting, with examples of available resources or solutions, and compel the reader to return to the site. Article MUST be in English.
+
+Write the article now as valid JSON ONLY:"""
 
             # Generate content using Gemini
             response = self.client.models.generate_content(
@@ -128,17 +143,11 @@ Write the article now:"""
             print(f"[gemini_client] Error generating article: {e}")
             return self._generate_placeholder_article(brief_plan, seo_focus)
 
-    def _generate_placeholder_article(self, brief_plan, seo_focus):
+    def _generate_placeholder_article(self, _brief_plan, _seo_focus):
         """Generate a simple placeholder article"""
-        return {
-            "title": f"{brief_plan}",
-            "slug": brief_plan.lower().strip().replace(' ', '-')[:50],
-            "meta_description": f"Comprehensive guide about {seo_focus or brief_plan}",
-            "keywords": [seo_focus or "AI", "technology", "guide"],
-            "content_html": f"<h2>{brief_plan}</h2><p>This is a placeholder article. The Gemini API integration is being configured.</p>",
-            "image_prompt": f"Professional illustration about {brief_plan}",
-            "headings_summary": [brief_plan]
-        }
+        print(f"[gemini_client] WARNING: Falling back to placeholder, returning None to prevent bad article")
+        # Return None instead of publishing placeholder content
+        return None
 
     def _get_fallback_value(self, field, brief_plan):
         """Get fallback value for missing fields"""
@@ -153,17 +162,11 @@ Write the article now:"""
         }
         return fallbacks.get(field, '')
 
-    def _parse_unstructured_response(self, text, brief_plan, seo_focus):
+    def _parse_unstructured_response(self, _text, _brief_plan, _seo_focus):
         """Try to extract article components from unstructured text"""
-        return {
-            "title": brief_plan,
-            "slug": brief_plan.lower().replace(' ', '-')[:50],
-            "meta_description": f"Article about {seo_focus or brief_plan}",
-            "keywords": [seo_focus or "AI"],
-            "content_html": f"<div>{text}</div>",
-            "image_prompt": f"Professional image for {brief_plan}",
-            "headings_summary": []
-        }
+        print(f"[gemini_client] WARNING: Unstructured response detected, returning None to prevent bad article")
+        # Return None instead of publishing malformed content
+        return None
 
     def generate_image(self, image_prompt: str, size="1600x900"):
         """Generate image using Gemini API with 16:9 aspect ratio"""
@@ -283,6 +286,67 @@ Write the article now:"""
         return placeholder, 'image/png'
     
 
+def validate_article(article: dict, _topic: str) -> tuple[bool, str]:
+    """
+    Validate article quality before publishing
+    Returns: (is_valid, error_message)
+    """
+    if not article:
+        return False, "Article is None or empty"
+
+    # Check title
+    title = article.get("title", "")
+    if not title or len(title) < 10:
+        return False, "Title is missing or too short"
+    if len(title) > 200:
+        return False, "Title is too long (max 200 chars)"
+    # Check if title contains JSON-like syntax
+    if "{" in title or "}" in title or "[" in title or "]" in title:
+        return False, "Title contains JSON syntax - malformed response"
+
+    # Check slug
+    slug = article.get("slug", "")
+    if not slug or len(slug) < 5:
+        return False, "Slug is missing or too short"
+
+    # Check content
+    content = article.get("content_html", "")
+    if not content or len(content) < 100:
+        return False, "Content is missing or too short (min 100 chars)"
+    # Check if content is just JSON
+    if content.strip().startswith("{") and content.strip().endswith("}"):
+        return False, "Content appears to be raw JSON - malformed response"
+    # Check for placeholder text
+    if "placeholder" in content.lower() or "lorem ipsum" in content.lower():
+        return False, "Content contains placeholder text"
+
+    # Check keywords
+    keywords = article.get("keywords", [])
+    if not keywords or not isinstance(keywords, list):
+        return False, "Keywords are missing or invalid"
+    if len(keywords) < 2:
+        return False, "Not enough keywords (min 2)"
+    # Check each keyword is a proper string (not a sentence)
+    for keyword in keywords:
+        if not isinstance(keyword, str) or len(keyword) > 50:
+            return False, f"Invalid keyword format: {keyword}"
+        if "\n" in keyword or len(keyword.split()) > 5:
+            return False, f"Keyword is too long or contains newlines: {keyword}"
+
+    # Check meta description
+    meta = article.get("meta_description", "")
+    if not meta or len(meta) < 50:
+        return False, "Meta description is missing or too short"
+
+    # Check image prompt
+    image_prompt = article.get("image_prompt", "")
+    if not image_prompt or len(image_prompt) < 10:
+        return False, "Image prompt is missing or too short"
+
+    print(f"[validate_article] Article validation passed for: {title[:50]}...")
+    return True, ""
+
+
 def generate_article_with_image(topic: str):
     """Wrapper: возвращает словарь с title, content, image_url"""
     client = GeminiClient()
@@ -290,15 +354,27 @@ def generate_article_with_image(topic: str):
     # 1️⃣ Генерируем текст статьи
     article = client.generate_article(brief_plan=topic, seo_focus=topic)
 
+    # VALIDATE: Check if article generation failed
+    if not article:
+        print(f"[generate_article_with_image] ERROR: Article generation returned None for topic: {topic}")
+        return None
+
+    # VALIDATE: Check article quality
+    is_valid, error_msg = validate_article(article, topic)
+    if not is_valid:
+        print(f"[generate_article_with_image] ERROR: Article validation failed: {error_msg}")
+        print(f"[generate_article_with_image] Article data: {article}")
+        return None
+
     # 2️⃣ Генерируем изображение через Gemini API
     image_prompt = article.get("image_prompt", f"Professional illustration for article about {topic}")
     image_bytes, mime_type = client.generate_image(image_prompt)
-    
+
     # Сохраняем изображение локально
     import os
     import hashlib
     os.makedirs("generated_images", exist_ok=True)
-    
+
     # Определяем расширение файла на основе MIME типа
     if mime_type == 'image/jpeg':
         extension = '.jpg'
@@ -306,7 +382,7 @@ def generate_article_with_image(topic: str):
         extension = '.png'
     else:
         extension = '.png'  # по умолчанию PNG
-    
+
     # уникальное имя файла
     fname = hashlib.md5(topic.encode()).hexdigest() + extension
     path = os.path.join("generated_images", fname)
@@ -314,6 +390,7 @@ def generate_article_with_image(topic: str):
         f.write(image_bytes)
 
     print(f"[generate_article_with_image] Image saved to: {path}")
+    print(f"[generate_article_with_image] Article validated and ready to publish: {article['title'][:50]}...")
 
     # 3️⃣ Возвращаем словарь с нужными полями
     return {
