@@ -33,6 +33,10 @@ logger = logging.getLogger(__name__)
 
 DB_FILE = 'storage.db'
 PUBLISH_INTERVAL_DAYS = 3
+RETRY_DELAY_MINUTES = 60  # При ошибке генерации ждем 1 час перед повторной попыткой
+
+# Глобальная переменная для отслеживания последней неудачной попытки
+last_failed_attempt = None
 
 def init_db():
     """Инициализация базы данных"""
@@ -243,58 +247,79 @@ def get_status():
 
 def run_scheduler():
     """Запуск планировщика"""
+    global last_failed_attempt
+
     logger.info("🚀 Запуск автоматического публикатора статей")
     logger.info(f"📅 Интервал публикации: каждые {PUBLISH_INTERVAL_DAYS} дней")
-    
+    logger.info(f"⏱️  Задержка при ошибке: {RETRY_DELAY_MINUTES} минут")
+
     # Инициализируем базу данных
     init_db()
-    
+
     # Показываем начальный статус
     status = get_status()
     logger.info(f"📊 Статус: {status['pending_articles']} статей ожидают публикации, {status['published_articles']} уже опубликованы")
-    
+
     if status['last_publish_time']:
         logger.info(f"📅 Последняя публикация: {status['last_publish_time'].strftime('%Y-%m-%d %H:%M')}")
         logger.info(f"📅 Следующая публикация: {status['next_publish'].strftime('%Y-%m-%d %H:%M')}")
     else:
         logger.info("📅 Это первая публикация")
-    
+
     while True:
         try:
             current_time = datetime.now(timezone.utc)
-            
+
             # Получаем актуальный статус
             status = get_status()
-            
+
             # Проверяем, нужно ли публиковать статью
             should_publish = False
-            
+
             logger.info(f"🔍 [DEBUG] Проверка времени публикации:")
             logger.info(f"🔍 [DEBUG] - Текущее время: {current_time}")
             logger.info(f"🔍 [DEBUG] - Последняя публикация: {status['last_publish_time']}")
             logger.info(f"🔍 [DEBUG] - Следующая публикация: {status['next_publish']}")
-            
-            if status['last_publish_time'] is None:
-                # Первая публикация - публикуем сразу
-                should_publish = True
-                logger.info("🎯 Первая публикация - публикуем статью")
-            else:
-                # Проверяем интервал с последней публикации
-                time_since_last = current_time - status['last_publish_time']
-                logger.info(f"🔍 [DEBUG] - Время с последней публикации: {time_since_last}")
-                logger.info(f"🔍 [DEBUG] - Требуемый интервал: {timedelta(days=PUBLISH_INTERVAL_DAYS)}")
-                
-                if time_since_last >= timedelta(days=PUBLISH_INTERVAL_DAYS):
-                    should_publish = True
-                    logger.info(f"⏰ Прошло {time_since_last.days} дней {time_since_last.seconds//3600} часов с последней публикации - время публиковать")
+
+            # ВАЖНО: Проверяем задержку после неудачной попытки
+            if last_failed_attempt:
+                time_since_failure = current_time - last_failed_attempt
+                minutes_since_failure = time_since_failure.total_seconds() / 60
+                logger.info(f"🔍 [DEBUG] - Последняя неудачная попытка: {last_failed_attempt}")
+                logger.info(f"🔍 [DEBUG] - Прошло минут с ошибки: {minutes_since_failure:.1f}")
+
+                if minutes_since_failure < RETRY_DELAY_MINUTES:
+                    remaining = RETRY_DELAY_MINUTES - minutes_since_failure
+                    logger.info(f"⏸️  Ожидание после ошибки: еще {remaining:.0f} минут до повторной попытки")
+                    # Пропускаем публикацию, даже если время наступило
+                    should_publish = False
                 else:
-                    time_until_next = status['next_publish'] - current_time
-                    days_remaining = time_until_next.days
-                    hours_remaining = time_until_next.seconds // 3600
-                    logger.info(f"⏳ До следующей публикации: {days_remaining} дней {hours_remaining} часов")
-            
+                    logger.info(f"✅ Задержка после ошибки прошла, можно попробовать снова")
+                    last_failed_attempt = None  # Сбрасываем после окончания задержки
+
+            # Проверяем время публикации только если нет активной задержки
+            if not should_publish and not last_failed_attempt:
+                if status['last_publish_time'] is None:
+                    # Первая публикация - публикуем сразу
+                    should_publish = True
+                    logger.info("🎯 Первая публикация - публикуем статью")
+                else:
+                    # Проверяем интервал с последней публикации
+                    time_since_last = current_time - status['last_publish_time']
+                    logger.info(f"🔍 [DEBUG] - Время с последней публикации: {time_since_last}")
+                    logger.info(f"🔍 [DEBUG] - Требуемый интервал: {timedelta(days=PUBLISH_INTERVAL_DAYS)}")
+
+                    if time_since_last >= timedelta(days=PUBLISH_INTERVAL_DAYS):
+                        should_publish = True
+                        logger.info(f"⏰ Прошло {time_since_last.days} дней {time_since_last.seconds//3600} часов с последней публикации - время публиковать")
+                    else:
+                        time_until_next = status['next_publish'] - current_time
+                        days_remaining = time_until_next.days
+                        hours_remaining = time_until_next.seconds // 3600
+                        logger.info(f"⏳ До следующей публикации: {days_remaining} дней {hours_remaining} часов")
+
             logger.info(f"🔍 [DEBUG] Решение о публикации: {should_publish}")
-            
+
             if should_publish:
                 logger.info("🔍 [DEBUG] Запускаем публикацию статьи...")
                 success = publish_next_article()
@@ -304,8 +329,13 @@ def run_scheduler():
                     status = get_status()
                     logger.info(f"📊 Обновленный статус: {status['pending_articles']} статей ожидают публикации")
                     logger.info(f"📅 Следующая публикация: {status['next_publish'].strftime('%Y-%m-%d %H:%M')}")
+                    # Сбрасываем счетчик ошибок при успешной публикации
+                    last_failed_attempt = None
                 else:
-                    logger.error("❌ Не удалось опубликовать статью")
+                    # Запоминаем время неудачной попытки
+                    last_failed_attempt = current_time
+                    logger.error(f"❌ Не удалось опубликовать статью")
+                    logger.info(f"⏸️  Следующая попытка будет через {RETRY_DELAY_MINUTES} минут")
             
             # Показываем статус каждые 6 часов
             if current_time.hour % 6 == 0 and current_time.minute < 5:
