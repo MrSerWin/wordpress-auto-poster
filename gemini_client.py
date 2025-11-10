@@ -5,6 +5,7 @@ Real implementation of Gemini API integration for article and image generation.
 import os
 import re
 import json
+import time
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -20,8 +21,8 @@ except Exception as e:
 class GeminiClient:
     def __init__(self):
         # Try multiple environment variable names for API key
-        self.api_key = (os.getenv('GOOGLE_API_KEY') or 
-                       os.getenv('GEMINI_API_KEY') or 
+        self.api_key = (os.getenv('GOOGLE_API_KEY') or
+                       os.getenv('GEMINI_API_KEY') or
                        "KEY")
 
         if not HAS_GENAI:
@@ -37,6 +38,57 @@ class GeminiClient:
         # Initialize real client
         self.client = genai.Client(api_key=self.api_key)
         print("[gemini_client] Initialized with Gemini API")
+
+        # Rate limiting: track last request time
+        self.last_request_time = 0
+        self.min_request_interval = 2.0  # минимум 2 секунды между запросами
+
+    def _wait_for_rate_limit(self):
+        """Enforce rate limiting between API requests"""
+        time_since_last = time.time() - self.last_request_time
+        if time_since_last < self.min_request_interval:
+            sleep_time = self.min_request_interval - time_since_last
+            print(f"[gemini_client] Rate limiting: waiting {sleep_time:.1f}s before next request")
+            time.sleep(sleep_time)
+        self.last_request_time = time.time()
+
+    def _make_api_request_with_retry(self, request_func, max_retries=3):
+        """Make API request with exponential backoff retry on 429 errors"""
+        for attempt in range(max_retries):
+            try:
+                self._wait_for_rate_limit()
+                return request_func()
+            except Exception as e:
+                error_str = str(e)
+                # Check for 429 error
+                if "429" in error_str or "Too Many Requests" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                    # Try to extract retry delay from error message
+                    import re
+                    retry_match = re.search(r'retry in ([\d.]+)s', error_str)
+
+                    if retry_match:
+                        # API tells us exact time to wait
+                        suggested_wait = float(retry_match.group(1))
+                        # Add 1 second buffer
+                        wait_time = suggested_wait + 1
+                        print(f"[gemini_client] ⚠️ Quota exceeded. API suggests waiting {suggested_wait:.1f}s")
+                        print(f"[gemini_client] ⏳ Waiting {wait_time:.1f}s before retry {attempt + 1}/{max_retries}...")
+                    else:
+                        # Exponential backoff: 10s, 30s, 60s
+                        wait_time = 10 * (3 ** attempt)
+                        print(f"[gemini_client] ⚠️ Rate limit hit (429). Retry {attempt + 1}/{max_retries} after {wait_time}s...")
+
+                    if attempt < max_retries - 1:
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        print(f"[gemini_client] ❌ Rate limit exceeded after {max_retries} retries")
+                        print(f"[gemini_client] 💡 TIP: You may have exceeded your API quota. Check: https://ai.dev/usage?tab=rate-limit")
+                        raise
+                else:
+                    # Not a rate limit error, re-raise immediately
+                    raise
+        return None
 
     def generate_article(self, brief_plan: str, seo_focus: str = "", tone="informative", word_count=900):
         """Generate a full article using Gemini API with SEO optimization"""
@@ -94,17 +146,21 @@ The article should be comprehensive, interesting, with examples of available res
 
 Write the article now as valid JSON ONLY:"""
 
-            # Generate content using Gemini
-            response = self.client.models.generate_content(
-                model='gemini-2.0-flash-exp',
-                contents=prompt,
-                config=GenerateContentConfig(
-                    temperature=0.8,
-                    top_p=0.95,
-                    top_k=40,
-                    max_output_tokens=8192,
+            # Generate content using Gemini with retry logic
+            def make_request():
+                return self.client.models.generate_content(
+                    # model='gemini-2.0-flash-exp',
+                    model='gemini-2.5-flash',
+                    contents=prompt,
+                    config=GenerateContentConfig(
+                        temperature=0.8,
+                        top_p=0.95,
+                        top_k=40,
+                        max_output_tokens=8192,
+                    )
                 )
-            )
+
+            response = self._make_api_request_with_retry(make_request)
 
             # Extract the text response
             response_text = response.text.strip()
@@ -195,12 +251,20 @@ Write the article now as valid JSON ONLY:"""
 
             print(f"[gemini_client] Generating image with Gemini API for prompt: {image_prompt[:100]}...")
 
-            # Generate content using streaming
-            for chunk in self.client.models.generate_content_stream(
-                model="gemini-2.0-flash-preview-image-generation",
-                contents=contents,
-                config=generate_content_config,
-            ):
+            # Generate content using streaming with retry logic
+            def make_image_request():
+                result = []
+                for chunk in self.client.models.generate_content_stream(
+                    model="gemini-2.0-flash-preview-image-generation",
+                    contents=contents,
+                    config=generate_content_config,
+                ):
+                    result.append(chunk)
+                return result
+
+            chunks = self._make_api_request_with_retry(make_image_request)
+
+            for chunk in chunks:
                 if (
                     chunk.candidates is None
                     or chunk.candidates[0].content is None
@@ -367,6 +431,10 @@ def generate_article_with_image(topic: str):
         return None
 
     # 2️⃣ Генерируем изображение через Gemini API
+    # Добавляем дополнительную задержку перед генерацией изображения
+    print(f"[generate_article_with_image] Waiting 3 seconds before generating image...")
+    time.sleep(3)
+
     image_prompt = article.get("image_prompt", f"Professional illustration for article about {topic}")
     image_bytes, mime_type = client.generate_image(image_prompt)
 
