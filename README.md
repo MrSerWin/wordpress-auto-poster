@@ -7,9 +7,13 @@ Application for automatic article publishing to WordPress using artificial intel
 - Automatic article generation using Gemini AI
 - Image generation for articles
 - WordPress publishing via REST API
+- **NEW: Automatic social media publishing** (Facebook, Twitter/X, Threads, VK, Instagram)
+- **NEW: AI-generated social media content** with platform-specific optimization
+- **NEW: Smart hashtag generation** for each platform
 - Scheduler for periodic publishing
 - SEO content optimization
 - REST API for publication management
+- Rate limiting and retry logic for API calls
 
 ## Project Structure
 
@@ -155,4 +159,49 @@ python setup_wp_password.py
 - WordPress 5.6+ with Application Passwords enabled
 - HTTPS on WordPress site
 - Google Gemini API key
+
+## 📱 Social Media Integration (NEW!)
+
+**Automatically publish articles to 5 social networks after WordPress publication!**
+
+### Features:
+- 🤖 AI-generated unique content for each platform
+- 📊 Platform-specific optimization (length, style, tone)
+- #️⃣ Automatic relevant hashtag generation
+- 🔗 Direct links to your articles
+- ⚙️ Flexible configuration - enable only needed platforms
+
+### Quick Setup:
+
+1. **Enable social media publishing**:
+   ```bash
+   # In .env file
+   ENABLE_SOCIAL_MEDIA=true
+   ```
+
+2. **Configure API keys** for desired platforms (see [SOCIAL_MEDIA_SETUP.md](SOCIAL_MEDIA_SETUP.md))
+
+3. **Test the system**:
+   ```bash
+   python test_social_media_integration.py
+   ```
+
+4. **Publish**:
+   ```bash
+   python auto_publisher.py --publish-now
+   ```
+
+### Supported Platforms:
+- 📘 **Facebook** - Professional posts with call-to-action
+- 🐦 **Twitter/X** - Concise, impactful tweets
+- 🧵 **Threads** - Conversational style posts
+- 🔵 **VK** - Russian-language audience focus
+- 📸 **Instagram** - Visual-focused captions with images
+
+### Documentation:
+- **Quick Start (3 min)**: [SOCIAL_MEDIA_QUICKSTART.md](SOCIAL_MEDIA_QUICKSTART.md)
+- **Detailed Setup**: [SOCIAL_MEDIA_SETUP.md](SOCIAL_MEDIA_SETUP.md)
+- **Summary**: [SUMMARY_SOCIAL_MEDIA.md](SUMMARY_SOCIAL_MEDIA.md)
+
+---
 

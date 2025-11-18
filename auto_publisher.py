@@ -17,6 +17,8 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from gemini_client import generate_article_with_image
 from wordpress_client import upload_image_to_wp, create_wp_post, get_or_create_tag, get_or_create_category
+from social_content_generator import SocialContentGenerator
+from social_media_clients import SocialMediaCoordinator
 
 load_dotenv()
 
@@ -181,10 +183,59 @@ def publish_next_article():
         )
         
         wp_id = wp_post.get('id')
+        wp_url = wp_post.get('link', f"{os.getenv('WP_BASE_URL')}/{slug}")
+
+        logger.info(f"✅ Статья опубликована в WordPress: {title} -> WP ID: {wp_id}")
+        logger.info(f"📎 URL: {wp_url}")
+
+        # Публикация в социальные сети
+        enable_social_media = os.getenv('ENABLE_SOCIAL_MEDIA', 'true').lower() == 'true'
+
+        if enable_social_media:
+            logger.info("📱 Начинаем публикацию в социальные сети...")
+            try:
+                # Генерируем контент для социальных сетей
+                social_generator = SocialContentGenerator()
+                social_posts = social_generator.generate_social_posts(
+                    article_title=title,
+                    article_url=wp_url,
+                    article_content=content_html[:1000],  # Первые 1000 символов для контекста
+                    keywords=keywords
+                )
+
+                # Публикуем во все настроенные социальные сети
+                social_coordinator = SocialMediaCoordinator()
+                social_results = social_coordinator.publish_to_all(
+                    posts_data=social_posts,
+                    image_path=article.get("image_url")  # Передаем путь к изображению
+                )
+
+                # Подсчитываем успешные публикации
+                successful_posts = sum(1 for r in social_results.values() if r.get('success'))
+                total_platforms = len(social_results)
+
+                logger.info(f"📱 Социальные сети: {successful_posts}/{total_platforms} публикаций успешны")
+
+                # Логируем детали
+                for platform, result in social_results.items():
+                    if result.get('success'):
+                        logger.info(f"   ✅ {platform}: {result.get('post_id')}")
+                    else:
+                        logger.warning(f"   ⚠️  {platform}: {result.get('reason', 'failed')}")
+
+            except Exception as e:
+                logger.error(f"❌ Ошибка публикации в социальные сети: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                # Продолжаем работу даже если публикация в соцсети не удалась
+        else:
+            logger.info("📱 Публикация в социальные сети отключена (ENABLE_SOCIAL_MEDIA=false)")
+
+        # Сохраняем запись о публикации
         save_post_record(title, slug, wp_id, keywords)
         mark_plan_published(plan_id)
-        
-        logger.info(f"✅ Статья опубликована: {title} -> WP ID: {wp_id}")
+
+        logger.info(f"✅ Публикация завершена: {title}")
         return True
         
     except Exception as e:
