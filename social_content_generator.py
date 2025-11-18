@@ -239,8 +239,19 @@ Generate the posts now as valid JSON ONLY:"""
         Returns:
             str: Отформатированный пост
         """
-        # Форматируем хештеги
-        formatted_hashtags = [f"#{tag.strip('#')}" for tag in hashtags]
+        # Форматируем хештеги - убираем пробелы и специальные символы
+        formatted_hashtags = []
+        for tag in hashtags:
+            # Убираем # если есть
+            clean_tag = tag.strip('#').strip()
+            # Убираем пробелы и заменяем на пустоту (camelCase стиль)
+            # или можно заменить на подчеркивание: clean_tag = clean_tag.replace(' ', '_')
+            clean_tag = clean_tag.replace(' ', '')
+            # Убираем другие недопустимые символы
+            clean_tag = re.sub(r'[^\w]', '', clean_tag)
+            if clean_tag:  # Добавляем только непустые теги
+                formatted_hashtags.append(f"#{clean_tag}")
+
         hashtag_string = " ".join(formatted_hashtags)
 
         # Разные форматы для разных платформ

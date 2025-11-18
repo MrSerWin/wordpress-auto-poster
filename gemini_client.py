@@ -232,21 +232,24 @@ Write the article now as valid JSON ONLY:"""
             return self._generate_fallback_image(image_prompt)
 
         try:
-            from google.genai.types import Content, Part, GenerateContentConfig
-            
+            from google.genai.types import Content, Part, GenerateContentConfig, ImageConfig
+
             # Create content for image generation
             contents = [
                 Content(
                     role="user",
                     parts=[
-                        Part.from_text(text=f"Generate a professional, high-quality image for a blog article. {image_prompt}. The image should be visually appealing, modern, and relevant to the content. High resolution, sharp focus, professional style.")
+                        Part.from_text(text=f"Generate a professional, high-quality image for a blog article. {image_prompt}. The image should be visually appealing, modern, and relevant to the content. Highly detailed, sharp focus, 4K resolution. Aspect Ratio 16:9")
                     ],
                 ),
             ]
-            
-            # Configure image generation
+
+            # Configure image generation with aspect ratio
             generate_content_config = GenerateContentConfig(
-                response_modalities=["TEXT", "IMAGE"],
+                response_modalities=["IMAGE", "TEXT"],
+                image_config=ImageConfig(
+                    aspect_ratio="16:9",
+                ),
             )
 
             print(f"[gemini_client] Generating image with Gemini API for prompt: {image_prompt[:100]}...")
@@ -255,7 +258,7 @@ Write the article now as valid JSON ONLY:"""
             def make_image_request():
                 result = []
                 for chunk in self.client.models.generate_content_stream(
-                    model="gemini-2.0-flash-preview-image-generation",
+                    model="gemini-2.5-flash-image",
                     contents=contents,
                     config=generate_content_config,
                 ):
