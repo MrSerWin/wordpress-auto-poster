@@ -224,38 +224,91 @@ Write the article now as valid JSON ONLY:"""
         # Return None instead of publishing malformed content
         return None
 
-    def generate_image(self, image_prompt: str, size="1600x900"):
-        """Generate image using Gemini API with 16:9 aspect ratio"""
+    def generate_image(self, image_prompt: str, size="1600x900", aspect_ratio="16:9"):
+        """Generate image using Imagen 4 API with proper aspect ratio support
+
+        Args:
+            image_prompt: Description of the image to generate
+            size: Ignored (kept for backwards compatibility)
+            aspect_ratio: Aspect ratio for the image (default "16:9")
+                         Supported: "1:1", "3:4", "4:3", "9:16", "16:9"
+        """
 
         if not self.client:
             print("[gemini_client] No client available, using fallback image generation")
             return self._generate_fallback_image(image_prompt)
 
+        # Сначала пробуем Imagen 4 (поддерживает aspect_ratio)
+        result = self._generate_image_imagen(image_prompt, aspect_ratio)
+        if result:
+            return result
+
+        # Fallback на Gemini Flash Image (только 1:1)
+        print("[gemini_client] Imagen failed, trying Gemini Flash Image...")
+        result = self._generate_image_gemini(image_prompt)
+        if result:
+            return result
+
+        # Последний fallback - локальная генерация
+        return self._generate_fallback_image(image_prompt)
+
+    def _generate_image_imagen(self, image_prompt: str, aspect_ratio: str = "16:9"):
+        """Generate image using Imagen 4 with proper aspect ratio"""
+        try:
+            from google.genai import types
+
+            print(f"[gemini_client] Generating image with Imagen 4 (aspect_ratio={aspect_ratio})...")
+            print(f"[gemini_client] Prompt: {image_prompt[:100]}...")
+
+            def make_imagen_request():
+                return self.client.models.generate_images(
+                    model="imagen-4.0-fast-generate-001",
+                    prompt=f"Professional, high-quality image for a blog article. {image_prompt}. Visually appealing, modern, highly detailed, sharp focus.",
+                    config=types.GenerateImagesConfig(
+                        number_of_images=1,
+                        aspect_ratio=aspect_ratio,
+                    )
+                )
+
+            response = self._make_api_request_with_retry(make_imagen_request)
+
+            if response and response.generated_images:
+                img = response.generated_images[0]
+                image_bytes = img.image.image_bytes
+                print(f"[gemini_client] ✅ Image generated successfully via Imagen 4 ({len(image_bytes)} bytes)")
+                return image_bytes, "image/png"
+
+            print("[gemini_client] Imagen 4: no image in response")
+            return None
+
+        except Exception as e:
+            print(f"[gemini_client] Imagen 4 error: {e}")
+            return None
+
+    def _generate_image_gemini(self, image_prompt: str):
+        """Generate image using Gemini Flash Image (fallback, 1:1 only)"""
         try:
             from google.genai.types import Content, Part, GenerateContentConfig
 
-            # Create content for image generation
             contents = [
                 Content(
                     role="user",
                     parts=[
-                        Part.from_text(text=f"Generate a professional, high-quality image for a blog article. {image_prompt}. The image should be visually appealing, modern, and relevant to the content. Highly detailed, sharp focus, 4K resolution. Aspect Ratio 16:9")
+                        Part.from_text(text=f"Generate a professional, high-quality image for a blog article. {image_prompt}. Visually appealing, modern, highly detailed.")
                     ],
                 ),
             ]
 
-            # Configure image generation
             generate_content_config = GenerateContentConfig(
                 response_modalities=["IMAGE", "TEXT"],
             )
 
-            print(f"[gemini_client] Generating image with Gemini API for prompt: {image_prompt[:100]}...")
+            print(f"[gemini_client] Generating image with Gemini Flash Image...")
 
-            # Generate content using streaming with retry logic
             def make_image_request():
                 result = []
                 for chunk in self.client.models.generate_content_stream(
-                    model="gemini-2.5-flash-image",  # Правильное название модели
+                    model="gemini-2.5-flash-image",
                     contents=contents,
                     config=generate_content_config,
                 ):
@@ -271,24 +324,23 @@ Write the article now as valid JSON ONLY:"""
                     or chunk.candidates[0].content.parts is None
                 ):
                     continue
-                    
-                if (chunk.candidates[0].content.parts[0].inline_data and 
+
+                if (chunk.candidates[0].content.parts[0].inline_data and
                     chunk.candidates[0].content.parts[0].inline_data.data):
-                    
+
                     inline_data = chunk.candidates[0].content.parts[0].inline_data
                     data_buffer = inline_data.data
                     mime_type = inline_data.mime_type
-                    
-                    print(f"[gemini_client] Image generated successfully via Gemini API")
+
+                    print(f"[gemini_client] ✅ Image generated via Gemini Flash Image")
                     return data_buffer, mime_type
 
-            # If no image was generated in the stream
-            print("[gemini_client] No image generated in stream, using fallback")
-            return self._generate_fallback_image(image_prompt)
+            print("[gemini_client] Gemini Flash Image: no image in stream")
+            return None
 
         except Exception as e:
-            print(f"[gemini_client] Error generating image with Gemini API: {e}")
-            return self._generate_fallback_image(image_prompt)
+            print(f"[gemini_client] Gemini Flash Image error: {e}")
+            return None
 
     def _generate_fallback_image(self, image_prompt: str):
         """Generate a fallback image when Gemini API is not available"""
