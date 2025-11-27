@@ -205,3 +205,4 @@ python setup_wp_password.py
 
 ---
 
+./stop_auto_publisher.sh && sleep 2 && ./start_auto_publisher.sh

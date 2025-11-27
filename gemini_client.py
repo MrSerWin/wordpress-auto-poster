@@ -232,7 +232,7 @@ Write the article now as valid JSON ONLY:"""
             return self._generate_fallback_image(image_prompt)
 
         try:
-            from google.genai.types import Content, Part, GenerateContentConfig, ImageConfig
+            from google.genai.types import Content, Part, GenerateContentConfig
 
             # Create content for image generation
             contents = [
@@ -244,12 +244,9 @@ Write the article now as valid JSON ONLY:"""
                 ),
             ]
 
-            # Configure image generation with aspect ratio
+            # Configure image generation
             generate_content_config = GenerateContentConfig(
                 response_modalities=["IMAGE", "TEXT"],
-                image_config=ImageConfig(
-                    aspect_ratio="16:9",
-                ),
             )
 
             print(f"[gemini_client] Generating image with Gemini API for prompt: {image_prompt[:100]}...")
@@ -258,7 +255,7 @@ Write the article now as valid JSON ONLY:"""
             def make_image_request():
                 result = []
                 for chunk in self.client.models.generate_content_stream(
-                    model="gemini-2.5-flash-image",
+                    model="gemini-2.5-flash-image",  # Правильное название модели
                     contents=contents,
                     config=generate_content_config,
                 ):
