@@ -122,8 +122,8 @@ def publish_next():
 # scheduler.add_job(publish_next, 'interval', days=PUBLISH_INTERVAL_DAYS, next_run_time=datetime.utcnow())
 # scheduler.start()
 # 
-# ВНИМАНИЕ: Планировщик отключен для избежания конфликтов с auto_publisher.py
-# Используйте только auto_publisher.py для автоматической публикации
+# ВНИМАНИЕ: Планировщик отключен для избежания конфликтов с thenextai_publisher.py
+# Используйте только thenextai_publisher.py для автоматической публикации
 
 @app.get('/status')
 def status():
