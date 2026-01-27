@@ -178,8 +178,30 @@ Write the article now as valid JSON ONLY:"""
                 else:
                     json_str = response_text
 
-            # Parse JSON
-            article_data = json.loads(json_str)
+            # Parse JSON with retry using repair techniques
+            article_data = None
+            parse_error = None
+
+            for attempt in range(3):
+                try:
+                    if attempt == 0:
+                        # First attempt: direct parse
+                        article_data = json.loads(json_str)
+                    elif attempt == 1:
+                        # Second attempt: try to fix common issues
+                        fixed_json = self._repair_json(json_str)
+                        article_data = json.loads(fixed_json)
+                    else:
+                        # Third attempt: extract fields manually
+                        article_data = self._extract_article_fields(json_str, brief_plan)
+                    break
+                except json.JSONDecodeError as e:
+                    parse_error = e
+                    print(f"[gemini_client] JSON parse attempt {attempt + 1} failed: {e}")
+                    continue
+
+            if article_data is None:
+                raise json.JSONDecodeError(str(parse_error), json_str, 0)
 
             # Validate required fields
             required_fields = ['title', 'slug', 'meta_description', 'keywords', 'content_html', 'image_prompt']
@@ -223,6 +245,120 @@ Write the article now as valid JSON ONLY:"""
         print(f"[gemini_client] WARNING: Unstructured response detected, returning None to prevent bad article")
         # Return None instead of publishing malformed content
         return None
+
+    def _repair_json(self, json_str: str) -> str:
+        """Attempt to repair common JSON issues from LLM responses"""
+        # Remove any trailing content after the last }
+        last_brace = json_str.rfind('}')
+        if last_brace != -1:
+            json_str = json_str[:last_brace + 1]
+
+        # Fix unescaped newlines in string values
+        # This is tricky - we need to escape newlines inside strings only
+        def escape_newlines_in_strings(s):
+            result = []
+            in_string = False
+            escape_next = False
+            for i, char in enumerate(s):
+                if escape_next:
+                    result.append(char)
+                    escape_next = False
+                    continue
+                if char == '\\':
+                    result.append(char)
+                    escape_next = True
+                    continue
+                if char == '"':
+                    in_string = not in_string
+                    result.append(char)
+                elif char == '\n' and in_string:
+                    result.append('\\n')
+                elif char == '\r' and in_string:
+                    result.append('\\r')
+                elif char == '\t' and in_string:
+                    result.append('\\t')
+                else:
+                    result.append(char)
+            return ''.join(result)
+
+        json_str = escape_newlines_in_strings(json_str)
+
+        # Fix common issues: trailing commas before } or ]
+        json_str = re.sub(r',(\s*[}\]])', r'\1', json_str)
+
+        return json_str
+
+    def _extract_article_fields(self, json_str: str, brief_plan: str) -> dict:
+        """Extract article fields using regex when JSON parsing fails"""
+        print("[gemini_client] Attempting to extract fields via regex...")
+
+        def extract_field(pattern, text, default=""):
+            match = re.search(pattern, text, re.DOTALL)
+            if match:
+                value = match.group(1).strip()
+                # Clean up the value
+                value = value.replace('\\n', '\n').replace('\\"', '"')
+                return value
+            return default
+
+        # Extract title
+        title = extract_field(r'"title"\s*:\s*"([^"]*(?:\\"[^"]*)*)"', json_str)
+        if not title:
+            title = brief_plan[:70]
+
+        # Extract slug
+        slug = extract_field(r'"slug"\s*:\s*"([^"]*)"', json_str)
+        if not slug:
+            slug = brief_plan.lower().replace(' ', '-')[:50]
+
+        # Extract meta_description
+        meta = extract_field(r'"meta_description"\s*:\s*"([^"]*(?:\\"[^"]*)*)"', json_str)
+        if not meta:
+            meta = f"Article about {brief_plan}"[:160]
+
+        # Extract keywords array
+        keywords_match = re.search(r'"keywords"\s*:\s*\[([^\]]*)\]', json_str)
+        keywords = ["AI", "technology"]
+        if keywords_match:
+            kw_str = keywords_match.group(1)
+            keywords = re.findall(r'"([^"]*)"', kw_str)
+            if not keywords:
+                keywords = ["AI", "technology"]
+
+        # Extract content_html - this is the hardest one
+        # Try to find content between "content_html": " and the next field
+        content_match = re.search(
+            r'"content_html"\s*:\s*"(.*?)"\s*,\s*"(?:image_prompt|headings_summary)"',
+            json_str,
+            re.DOTALL
+        )
+        if content_match:
+            content = content_match.group(1)
+            # Unescape
+            content = content.replace('\\n', '\n').replace('\\"', '"').replace('\\/', '/')
+        else:
+            # Try alternative extraction
+            content = extract_field(r'"content_html"\s*:\s*"(.*?)"(?=\s*,\s*"|\s*})', json_str)
+            if not content:
+                content = f"<p>Content about {brief_plan}</p>"
+
+        # Extract image_prompt
+        image_prompt = extract_field(r'"image_prompt"\s*:\s*"([^"]*(?:\\"[^"]*)*)"', json_str)
+        if not image_prompt:
+            image_prompt = f"Professional illustration for {brief_plan}"
+
+        result = {
+            "title": title,
+            "slug": slug,
+            "meta_description": meta,
+            "keywords": keywords,
+            "content_html": content,
+            "image_prompt": image_prompt,
+            "headings_summary": []
+        }
+
+        print(f"[gemini_client] Extracted fields via regex: title='{title[:50]}...', content_len={len(content)}")
+        return result
 
     def generate_image(self, image_prompt: str, size="1600x900", aspect_ratio="16:9"):
         """Generate image using Imagen 4 API with proper aspect ratio support

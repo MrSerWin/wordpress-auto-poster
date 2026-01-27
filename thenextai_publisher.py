@@ -23,15 +23,22 @@ from social_media_clients import SocialMediaCoordinator
 load_dotenv()
 
 # Настройка логирования
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('auto_publisher.log'),
-        logging.StreamHandler()
-    ]
-)
+# Используем только FileHandler чтобы избежать дублирования при запуске через nohup
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Очищаем существующие handlers чтобы избежать дублирования при повторном импорте
+if logger.handlers:
+    logger.handlers.clear()
+
+# Добавляем только FileHandler
+file_handler = logging.FileHandler('auto_publisher.log')
+file_handler.setLevel(logging.INFO)
+file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+logger.addHandler(file_handler)
+
+# Предотвращаем propagation к root logger
+logger.propagate = False
 
 DB_FILE = 'storage.db'
 PUBLISH_INTERVAL_DAYS = 3
